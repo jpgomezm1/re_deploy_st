@@ -21,34 +21,24 @@ class CostTracker:
             "cache_read": 0.08    # $0.08 por MTok de cache read
         },
         ClaudeModel.SONNET.value: {
-            "input": 3.00,        # $3.00 por MTok de input
-            "output": 15.00,      # $15.00 por MTok de output
-            "cache_write": 3.75,  # $3.75 por MTok de cache write
-            "cache_read": 0.30    # $0.30 por MTok de cache read
+            "input": 3.00,
+            "output": 15.00,
+            "cache_write": 3.75,
+            "cache_read": 0.30
         },
         ClaudeModel.OPUS.value: {
-            "input": 15.00,       # $15.00 por MTok de input
-            "output": 75.00,      # $75.00 por MTok de output
-            "cache_write": 18.75, # $18.75 por MTok de cache write
-            "cache_read": 1.50    # $1.50 por MTok de cache read
+            "input": 15.00,
+            "output": 75.00,
+            "cache_write": 18.75,
+            "cache_read": 1.50
         }
     }
     
     @staticmethod
-    def calculate_cost(model: str, input_tokens: int, output_tokens: int, 
-                      cache_write_tokens: int = 0, cache_read_tokens: int = 0) -> Dict[str, float]:
+    def calculate_cost(model: str, input_tokens: int, output_tokens: int,
+                       cache_write_tokens: int = 0, cache_read_tokens: int = 0) -> Dict[str, float]:
         """
         Calcula el costo detallado de una llamada a la API basado en los tokens utilizados.
-        
-        Args:
-            model: Nombre del modelo de Claude
-            input_tokens: Número de tokens de entrada
-            output_tokens: Número de tokens de salida
-            cache_write_tokens: Número de tokens escritos en caché (opcional)
-            cache_read_tokens: Número de tokens leídos del caché (opcional)
-        
-        Returns:
-            Dictionary con el desglose de costos y totales
         """
         if model not in CostTracker.PRICING:
             raise ValueError(f"Modelo {model} no encontrado en la tabla de precios")
@@ -92,26 +82,13 @@ class VehicleMarketplaceAnalyzer:
     def __init__(self, anthropic_api_key):
         """
         Inicializa el analizador con la API key de Anthropic
-        
-        Args:
-            anthropic_api_key: API key de Anthropic
         """
         self.anthropic = Anthropic(api_key=anthropic_api_key)
         self.last_request_cost = None
         
     def take_screenshot(self, url, output_file="screenshot.png", width=1920, height=1080, clip_width=600):
         """
-        Toma una captura de pantalla de la página del marketplace utilizando cookies pre-cargadas.
-        
-        Args:
-            url: URL del listado
-            output_file: Nombre del archivo de salida
-            width: Ancho de la ventana del navegador
-            height: Alto de la ventana del navegador
-            clip_width: Ancho del área de recorte
-            
-        Returns:
-            bool: True si la captura fue exitosa, False en caso contrario
+        Toma una captura de pantalla de Facebook Marketplace (u otro) utilizando cookies pre-cargadas.
         """
         try:
             with sync_playwright() as p:
@@ -130,20 +107,24 @@ class VehicleMarketplaceAnalyzer:
                 else:
                     print(f"No se encontró el archivo de cookies '{cookies_file}'. Asegúrate de generarlo previamente.")
                 
-                # Crear el contexto incluyendo las cookies
+                # Crear el contexto sin usar 'cookies=' porque las versiones recientes de Playwright
+                # ya no aceptan ese parámetro en new_context()
                 context = browser.new_context(
-                    viewport={'width': width, 'height': height},
-                    cookies=cookies
+                    viewport={'width': width, 'height': height}
                 )
-                page = context.new_page()
                 
+                # Agregar cookies manualmente si existen
+                if cookies:
+                    context.add_cookies(cookies)
+                
+                page = context.new_page()
                 # Navegar a la página esperando que el DOM se cargue
                 page.goto(url, wait_until='domcontentloaded', timeout=20000)
                 
                 # Breve pausa para que se rendericen elementos básicos
                 page.wait_for_timeout(2000)
                 
-                # Intentar esperar un selector opcional (por ejemplo, "Descripción del vendedor")
+                # Intentar esperar un selector opcional
                 try:
                     page.wait_for_selector('text=Descripción del vendedor', timeout=5000)
                 except Exception:
@@ -165,12 +146,6 @@ class VehicleMarketplaceAnalyzer:
     def encode_image(self, image_path):
         """
         Codifica la imagen en base64
-        
-        Args:
-            image_path: Ruta al archivo de imagen
-            
-        Returns:
-            str: Imagen codificada en base64 o None si hay error
         """
         try:
             with open(image_path, "rb") as image_file:
@@ -183,25 +158,12 @@ class VehicleMarketplaceAnalyzer:
         """
         Analiza la imagen del listado del vehículo usando Claude y rastrea los costos.
         Se sustituye la sección de teléfono por el phone_number que recibe como parámetro.
-
-        Args:
-            image_path: Ruta a la imagen del listado
-            phone_number: Teléfono dinámico del comercial (ej: '+57 3183849532')
-
-        Returns:
-            Dict: Diccionario con el análisis y la información de tokens, o None si hay error
-            {
-                'analysis': str,
-                'input_tokens': int,
-                'output_tokens': int
-            }
         """
         try:
             image_data = self.encode_image(image_path)
             if not image_data:
                 return None
 
-            # Ajuste: reemplazamos el teléfono estático por el phone_number
             prompt = f"""Analiza esta imagen y extrae la información siguiendo estas reglas estrictas:
 
 1. PRECIO:
@@ -241,7 +203,8 @@ INSTRUCCIONES IMPORTANTES:
 1. Solo incluir los campos con ➖ que estén presentes en la imagen
 2. Todo el texto después de "Llamada celular / WhatsApp" debe incluirse EXACTAMENTE como está mostrado arriba
 3. No modificar ningún emoji o formato
-4. No agregar información adicional al final"""
+4. No agregar información adicional al final
+"""
             model = ClaudeModel.HAIKU.value
             response = self.anthropic.messages.create(
                 model=model,
@@ -276,25 +239,17 @@ INSTRUCCIONES IMPORTANTES:
     def get_last_request_cost(self) -> Optional[Dict]:
         """
         Retorna la información detallada de costo de la última solicitud
-        
-        Returns:
-            Dict: Información de costos o None si no hay solicitud previa
         """
         return self.last_request_cost
 
 def main():
-    # Configurar tu API key de Anthropic
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    url = "https://www.facebook.com/marketplace/item/1336536434139458/"
     
-    # URL del marketplace a analizar
-    url = "https://www.facebook.com/marketplace/item/1336536434139458/?ref=search&referral_code=null&referral_story_type=post&tracking=browse_serp%3A6becad76-e5e3-46e4-afd6-540a0b176fa7"
-    
-    # Inicializar el analizador
     analyzer = VehicleMarketplaceAnalyzer(ANTHROPIC_API_KEY)
     screenshot_path = "vehicle_listing.png"
     
     if analyzer.take_screenshot(url, screenshot_path):
-        # Ejemplo: pasamos un teléfono dinámico
         phone_number = "+57 3009998888"
         result = analyzer.analyze_vehicle_listing(screenshot_path, phone_number)
         if result:
@@ -318,7 +273,7 @@ def main():
         else:
             print("No se pudo analizar la imagen")
     else:
-        print("No se pudo tomar el screenshot")
+        print("No se pudo tomar la captura de pantalla")
 
 if __name__ == "__main__":
     main()
