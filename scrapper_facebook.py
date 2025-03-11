@@ -88,7 +88,8 @@ class VehicleMarketplaceAnalyzer:
         
     def take_screenshot(self, url, output_file="screenshot.png", width=1920, height=1080, clip_width=600):
         """
-        Toma una captura de pantalla de Facebook Marketplace (u otro) utilizando cookies pre-cargadas.
+        Toma una captura de pantalla de Facebook Marketplace (u otro) utilizando cookies pre-cargadas,
+        y forzando la corrección de 'sameSite' en cada cookie antes de agregarlas al contexto.
         """
         try:
             with sync_playwright() as p:
@@ -113,8 +114,13 @@ class VehicleMarketplaceAnalyzer:
                     viewport={'width': width, 'height': height}
                 )
                 
-                # Agregar cookies manualmente si existen
+                # -- Ajuste clave: Forzar 'sameSite' si no es válido --
                 if cookies:
+                    for c in cookies:
+                        if 'sameSite' not in c or c['sameSite'] not in ('Strict', 'Lax', 'None'):
+                            print(f"Corrigiendo sameSite={c.get('sameSite')} para cookie '{c.get('name')}' a 'None'")
+                            c['sameSite'] = 'None'
+                    
                     context.add_cookies(cookies)
                 
                 page = context.new_page()
