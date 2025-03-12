@@ -79,10 +79,19 @@ class CostTracker:
         }
 
 class VehicleMarketplaceAnalyzer:
-    def __init__(self, anthropic_api_key):
+    def __init__(self, anthropic_api_key=None):
         """
         Inicializa el analizador con la API key de Anthropic
         """
+        # Si no hay API key proporcionada, intenta usar la variable de entorno o establece una predeterminada
+        if not anthropic_api_key:
+            anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+            
+        # Si aún no hay API key, establecemos una directamente (solo para desarrollo/pruebas)
+        if not anthropic_api_key:
+            # Reemplaza esto con tu API key real para desarrollo
+            anthropic_api_key = "sk-ant-api03-tu-api-key-aqui-VLVKAAAA"
+            
         # Verificamos que la API key no esté vacía
         if not anthropic_api_key:
             raise ValueError("La API key de Anthropic no está configurada o está vacía")
@@ -96,7 +105,14 @@ class VehicleMarketplaceAnalyzer:
         print(f"Primeros caracteres de la API Key: {anthropic_api_key[:7]}...")
             
         # Inicializamos el cliente de Anthropic con la API key
-        self.anthropic = Anthropic(api_key=anthropic_api_key)
+        try:
+            print("Intentando inicializar cliente Anthropic...")
+            self.anthropic = Anthropic(api_key=anthropic_api_key)
+            print("Cliente Anthropic inicializado correctamente.")
+        except Exception as e:
+            print(f"Error inicializando cliente Anthropic: {str(e)}")
+            raise
+            
         self.last_request_cost = None
         
     def take_screenshot(self, url, output_file="screenshot.png", width=1920, height=1080, clip_width=600):
@@ -227,35 +243,43 @@ INSTRUCCIONES IMPORTANTES:
             model = ClaudeModel.HAIKU.value
             
             # Verificar antes de la llamada que el cliente tiene API key
-            if not hasattr(self, 'anthropic') or not self.anthropic or not getattr(self.anthropic, '_api_key', None):
-                print("Error: Cliente de Anthropic no inicializado correctamente o sin API key")
+            if not hasattr(self, 'anthropic') or not self.anthropic:
+                print("Error: Cliente de Anthropic no inicializado correctamente")
                 return None
                 
-            response = self.anthropic.messages.create(
-                model=model,
-                max_tokens=1000,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_data}}
-                    ]
-                }]
-            )
-            self.last_request_cost = CostTracker.calculate_cost(
-                model=model,
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens
-            )
-            if isinstance(response.content, list) and len(response.content) > 0:
-                first_block = response.content[0]
-                return {
-                    'analysis': first_block.text.strip(),
-                    'input_tokens': response.usage.input_tokens,
-                    'output_tokens': response.usage.output_tokens
-                }
-            else:
-                print("Respuesta no reconocida:", response.content)
+            try:
+                print("Haciendo llamada al API de Anthropic...")
+                response = self.anthropic.messages.create(
+                    model=model,
+                    max_tokens=1000,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": image_data}}
+                        ]
+                    }]
+                )
+                print("Respuesta recibida del API de Anthropic.")
+                
+                self.last_request_cost = CostTracker.calculate_cost(
+                    model=model,
+                    input_tokens=response.usage.input_tokens,
+                    output_tokens=response.usage.output_tokens
+                )
+                
+                if isinstance(response.content, list) and len(response.content) > 0:
+                    first_block = response.content[0]
+                    return {
+                        'analysis': first_block.text.strip(),
+                        'input_tokens': response.usage.input_tokens,
+                        'output_tokens': response.usage.output_tokens
+                    }
+                else:
+                    print("Respuesta no reconocida:", response.content)
+                    return None
+            except Exception as e:
+                print(f"Error en la llamada API de Anthropic: {str(e)}")
                 return None
         except Exception as e:
             print(f"Error analizando imagen con Claude: {str(e)}")
