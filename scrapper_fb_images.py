@@ -1,5 +1,3 @@
-# scrapper_fb_images.py
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -56,6 +54,7 @@ def get_image_dimensions(img_url, session):
 async def check_image_dimension_async(img_url, min_dim, max_dim, session):
     """
     Verifica las dimensiones de una imagen de forma asíncrona.
+    Agrega un log de debug para mostrar el tamaño real de cada imagen.
     """
     try:
         async with session.get(img_url) as response:
@@ -63,6 +62,8 @@ async def check_image_dimension_async(img_url, min_dim, max_dim, session):
                 img_data = await response.read()
                 img = Image.open(BytesIO(img_data))
                 width, height = img.size
+                # Log de depuración para ver el tamaño de cada imagen.
+                logger.info(f"[DEBUG] Imagen {img_url} => {width}x{height}")
                 if (min_dim <= width <= max_dim) or (min_dim <= height <= max_dim):
                     return img_url
     except Exception as e:
@@ -75,13 +76,14 @@ async def filter_images_async(image_urls, min_dim, max_dim):
     """
     async with aiohttp.ClientSession() as session:
         tasks = [check_image_dimension_async(url, min_dim, max_dim, session) 
-                for url in image_urls]
+                 for url in image_urls]
         results = await asyncio.gather(*tasks)
         return [url for url in results if url]
 
 def scrape_facebook_images(target_url, min_dim=860, max_dim=980):
     """
     Versión optimizada del scraper de imágenes de Facebook Marketplace.
+    Toma capturas con Selenium, luego filtra por tamaño (min_dim, max_dim).
     """
     logger.info(f"Iniciando scraping optimizado para URL: {target_url}")
     
@@ -97,7 +99,7 @@ def scrape_facebook_images(target_url, min_dim=860, max_dim=980):
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-logging")
     options.add_argument("--log-level=3")
-    options.add_argument("--disable-images")  # Desactivar carga de imágenes para mayor velocidad
+    options.add_argument("--disable-images")  # Desactivar carga de imágenes
     
     prefs = {
         'profile.default_content_setting_values': {
@@ -110,30 +112,31 @@ def scrape_facebook_images(target_url, min_dim=860, max_dim=980):
     driver = None
     try:
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-        wait = WebDriverWait(driver, 10)  # Reducido de 15 a 10 segundos
+        wait = WebDriverWait(driver, 10)  # Espera hasta 10 seg
         
-        # Cargar la página directamente sin cookies
+        # Cargar la página
         driver.get(target_url)
-        time.sleep(3)  # Reducido de 5 a 3 segundos
+        time.sleep(3)  # Pausa breve
         
         # Intentar abrir la galería
         try:
             first_img = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "img")))
             driver.execute_script("arguments[0].click();", first_img)
-            time.sleep(2)  # Reducido de 3 a 2 segundos
+            time.sleep(2)
         except Exception as e:
             logger.warning(f"No se pudo abrir la galería: {e}")
         
-        # Recolectar URLs de imágenes de forma optimizada
+        # Recolectar URLs de imágenes
         image_urls = set()
-        max_attempts = 10  # Límite de intentos para encontrar nuevas imágenes
+        max_attempts = 10
         attempts = 0
         last_count = 0
         
         while attempts < max_attempts:
             current_imgs = driver.find_elements(By.TAG_NAME, "img")
+            # Filtrar src que contenga 'scontent' (típico de fbcdn)
             current_urls = {img.get_attribute("src") for img in current_imgs 
-                          if img.get_attribute("src") and "scontent" in img.get_attribute("src")}
+                            if img.get_attribute("src") and "scontent" in img.get_attribute("src")}
             image_urls.update(current_urls)
             
             if len(image_urls) == last_count:
@@ -146,11 +149,11 @@ def scrape_facebook_images(target_url, min_dim=860, max_dim=980):
                 next_button = wait.until(EC.element_to_be_clickable(
                     (By.XPATH, "//div[@aria-label='Siguiente']")))
                 driver.execute_script("arguments[0].click();", next_button)
-                time.sleep(1)  # Reducido de 2 a 1 segundo
+                time.sleep(1)
             except:
                 break
         
-        # Filtrar imágenes de forma asíncrona
+        # Filtrar imágenes de forma asíncrona según dimensiones
         filtered_urls = asyncio.run(filter_images_async(list(image_urls), min_dim, max_dim))
         
         result = {
