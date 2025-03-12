@@ -1,4 +1,4 @@
-import os
+import os 
 from playwright.sync_api import sync_playwright
 from anthropic import Anthropic
 import base64
@@ -83,6 +83,19 @@ class VehicleMarketplaceAnalyzer:
         """
         Inicializa el analizador con la API key de Anthropic
         """
+        # Verificamos que la API key no esté vacía
+        if not anthropic_api_key:
+            raise ValueError("La API key de Anthropic no está configurada o está vacía")
+            
+        # Verificamos el formato básico de la API key (debe comenzar con sk-ant-)
+        if not anthropic_api_key.startswith("sk-ant-"):
+            print("Advertencia: El formato de la API key no parece ser el correcto (debería comenzar con 'sk-ant-')")
+            
+        # Imprimimos información de depuración (solo los primeros caracteres por seguridad)
+        print(f"API Key está definida: {bool(anthropic_api_key)}")
+        print(f"Primeros caracteres de la API Key: {anthropic_api_key[:7]}...")
+            
+        # Inicializamos el cliente de Anthropic con la API key
         self.anthropic = Anthropic(api_key=anthropic_api_key)
         self.last_request_cost = None
         
@@ -212,6 +225,12 @@ INSTRUCCIONES IMPORTANTES:
 4. No agregar información adicional al final
 """
             model = ClaudeModel.HAIKU.value
+            
+            # Verificar antes de la llamada que el cliente tiene API key
+            if not hasattr(self, 'anthropic') or not self.anthropic or not getattr(self.anthropic, '_api_key', None):
+                print("Error: Cliente de Anthropic no inicializado correctamente o sin API key")
+                return None
+                
             response = self.anthropic.messages.create(
                 model=model,
                 max_tokens=1000,
@@ -249,37 +268,58 @@ INSTRUCCIONES IMPORTANTES:
         return self.last_request_cost
 
 def main():
+    # Intentamos obtener la API key de las variables de entorno
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    
+    # Si no está en las variables de entorno, podemos establecerla directamente (solo para pruebas)
+    if not ANTHROPIC_API_KEY:
+        print("ADVERTENCIA: No se encontró la API key en variables de entorno. Por favor configúrala.")
+        print("Puedes configurarla de varias formas:")
+        print("- Linux/macOS: export ANTHROPIC_API_KEY='tu-api-key'")
+        print("- Windows (CMD): set ANTHROPIC_API_KEY=tu-api-key")
+        print("- Windows (PowerShell): $env:ANTHROPIC_API_KEY='tu-api-key'")
+        
+        # Descomenta la siguiente línea y reemplaza con tu API key para pruebas
+        # ANTHROPIC_API_KEY = "sk-ant-tu-api-key-aqui"
+        
+        # Si no hay API key configurada, salimos
+        if not ANTHROPIC_API_KEY:
+            print("Error: No se puede continuar sin una API key de Anthropic. Saliendo del programa.")
+            return
+    
     url = "https://www.facebook.com/marketplace/item/1336536434139458/"
     
-    analyzer = VehicleMarketplaceAnalyzer(ANTHROPIC_API_KEY)
-    screenshot_path = "vehicle_listing.png"
-    
-    if analyzer.take_screenshot(url, screenshot_path):
-        phone_number = "+57 3009998888"
-        result = analyzer.analyze_vehicle_listing(screenshot_path, phone_number)
-        if result:
-            print("\nAnálisis del vehículo:")
-            print(result['analysis'])
-            
-            print("\nTokens utilizados en esta solicitud:")
-            print(f"Input tokens: {result['input_tokens']:,}")
-            print(f"Output tokens: {result['output_tokens']:,}")
-            
-            cost_info = analyzer.get_last_request_cost()
-            if cost_info:
-                print("\nInformación detallada de costos:")
-                print(f"Modelo: {cost_info['model']}")
-                print("\nCostos:")
-                for category, amount in cost_info['costs'].items():
-                    print(f"  {category.capitalize()}: ${amount:.7f}")
-                print("\nTokens utilizados:")
-                for category, count in cost_info['tokens'].items():
-                    print(f"  {category.capitalize()}: {count:,}")
+    try:
+        analyzer = VehicleMarketplaceAnalyzer(ANTHROPIC_API_KEY)
+        screenshot_path = "vehicle_listing.png"
+        
+        if analyzer.take_screenshot(url, screenshot_path):
+            phone_number = "+57 3009998888"
+            result = analyzer.analyze_vehicle_listing(screenshot_path, phone_number)
+            if result:
+                print("\nAnálisis del vehículo:")
+                print(result['analysis'])
+                
+                print("\nTokens utilizados en esta solicitud:")
+                print(f"Input tokens: {result['input_tokens']:,}")
+                print(f"Output tokens: {result['output_tokens']:,}")
+                
+                cost_info = analyzer.get_last_request_cost()
+                if cost_info:
+                    print("\nInformación detallada de costos:")
+                    print(f"Modelo: {cost_info['model']}")
+                    print("\nCostos:")
+                    for category, amount in cost_info['costs'].items():
+                        print(f"  {category.capitalize()}: ${amount:.7f}")
+                    print("\nTokens utilizados:")
+                    for category, count in cost_info['tokens'].items():
+                        print(f"  {category.capitalize()}: {count:,}")
+            else:
+                print("No se pudo analizar la imagen")
         else:
-            print("No se pudo analizar la imagen")
-    else:
-        print("No se pudo tomar la captura de pantalla")
+            print("No se pudo tomar la captura de pantalla")
+    except Exception as e:
+        print(f"Error en la ejecución del programa: {str(e)}")
 
 if __name__ == "__main__":
     main()
